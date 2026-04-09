@@ -86,9 +86,9 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         .number()
         .int()
         .min(1)
-        .max(500)
+        .max(100)
         .optional()
-        .describe("최대 조회 건수 (기본 100, 최대 500)"),
+        .describe("최대 조회 건수 (기본 20, 최대 100)"),
       section_id: z
         .string()
         .optional()
@@ -99,7 +99,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const startDate = start_date ?? firstDayOfMonth();
         const endDate = end_date ?? today();
-        const entries = await client.getEntries(sectionId, startDate, endDate, limit ?? 100);
+        const entries = await client.getEntries(sectionId, startDate, endDate, limit ?? 20);
         const accountMap = await client.loadAccountMap(sectionId);
         return ok(formatEntries(entries, accountMap));
       } catch (e) {
@@ -126,14 +126,16 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const accountMap = await client.loadAccountMap(sectionId);
 
-        if (!accountMap.has(l_account_id)) {
+        const lEntry = accountMap.get(l_account_id);
+        if (!lEntry) {
           return err(
             new Error(
               `차변 계정 ID '${l_account_id}'를 찾을 수 없습니다. whooing_list_accounts로 올바른 ID를 확인하세요.`
             )
           );
         }
-        if (!accountMap.has(r_account_id)) {
+        const rEntry = accountMap.get(r_account_id);
+        if (!rEntry) {
           return err(
             new Error(
               `대변 계정 ID '${r_account_id}'를 찾을 수 없습니다. whooing_list_accounts로 올바른 ID를 확인하세요.`
@@ -144,7 +146,9 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const entry = await client.addEntry(
           sectionId,
           entry_date,
+          lEntry.accountType,
           l_account_id,
+          rEntry.accountType,
           r_account_id,
           money,
           item,
@@ -176,24 +180,25 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const accountMap = await client.loadAccountMap(sectionId);
 
-        if (l_account_id && !accountMap.has(l_account_id)) {
-          return err(
-            new Error(
-              `차변 계정 ID '${l_account_id}'를 찾을 수 없습니다.`
-            )
-          );
+        let lAccount: string | undefined;
+        if (l_account_id) {
+          const lEntry = accountMap.get(l_account_id);
+          if (!lEntry) return err(new Error(`차변 계정 ID '${l_account_id}'를 찾을 수 없습니다.`));
+          lAccount = lEntry.accountType;
         }
-        if (r_account_id && !accountMap.has(r_account_id)) {
-          return err(
-            new Error(
-              `대변 계정 ID '${r_account_id}'를 찾을 수 없습니다.`
-            )
-          );
+
+        let rAccount: string | undefined;
+        if (r_account_id) {
+          const rEntry = accountMap.get(r_account_id);
+          if (!rEntry) return err(new Error(`대변 계정 ID '${r_account_id}'를 찾을 수 없습니다.`));
+          rAccount = rEntry.accountType;
         }
 
         const entry = await client.updateEntry(sectionId, entry_id, {
           entry_date,
+          l_account: lAccount,
           l_account_id,
+          r_account: rAccount,
           r_account_id,
           money,
           item,
@@ -209,7 +214,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
   // 6. Balance sheet
   server.tool(
     "whooing_balance_sheet",
-    "잔액표(자산/부채 현황)를 조회합니다.",
+    "잔액표(자산/부채/순자산 현황)를 조회합니다.",
     {
       start_date: z.string().optional().describe("시작일 (YYYYMMDD, 미지정 시 이번 달 1일)"),
       end_date: z.string().optional().describe("종료일 (YYYYMMDD, 미지정 시 오늘)"),
@@ -220,12 +225,9 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const startDate = start_date ?? firstDayOfMonth();
         const endDate = end_date ?? today();
-        const [balance, accountMap] = await Promise.all([
-          client.getBalanceSheet(sectionId, startDate, endDate),
-          client.loadAccountMap(sectionId),
-        ]);
+        const balance = await client.getBalanceSheet(sectionId, startDate, endDate);
         const dateRange = `${startDate} ~ ${endDate}`;
-        return ok(formatBalanceSheet(balance, accountMap, dateRange));
+        return ok(formatBalanceSheet(balance, dateRange));
       } catch (e) {
         return err(e);
       }
@@ -246,12 +248,9 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const startDate = start_date ?? firstDayOfMonth();
         const endDate = end_date ?? today();
-        const [pl, accountMap] = await Promise.all([
-          client.getPLReport(sectionId, startDate, endDate),
-          client.loadAccountMap(sectionId),
-        ]);
+        const pl = await client.getPLReport(sectionId, startDate, endDate);
         const dateRange = `${startDate} ~ ${endDate}`;
-        return ok(formatPLReport(pl, accountMap, dateRange));
+        return ok(formatPLReport(pl, dateRange));
       } catch (e) {
         return err(e);
       }

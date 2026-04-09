@@ -14,9 +14,7 @@ function requireEnv(name: string): string {
 }
 
 const config: WhooingConfig = {
-  appId: requireEnv("WHOOING_APP_ID"),
-  token: requireEnv("WHOOING_TOKEN"),
-  signature: requireEnv("WHOOING_SIGNATURE"),
+  apiKey: requireEnv("WHOOING_API_KEY"),
   defaultSectionId: process.env.WHOOING_SECTION_ID,
 };
 

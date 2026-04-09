@@ -1,12 +1,12 @@
-import crypto from "node:crypto";
 import type {
   WhooingConfig,
   ApiResponse,
   Section,
-  Account,
   AccountMap,
   AccountsResult,
   Entry,
+  EntriesResponse,
+  ReportResult,
   BalanceSheet,
   PLResult,
 } from "./types.js";
@@ -21,13 +21,6 @@ export class WhooingClient {
     this.config = config;
   }
 
-  private buildApiKey(): string {
-    const nounce = crypto.randomBytes(20).toString("hex");
-    const timestamp = Date.now();
-    // Note: "signiture" and "nounce" are intentional typos from the official Whooing API spec
-    return `app_id=${this.config.appId},token=${this.config.token},signiture=${this.config.signature},nounce=${nounce},timestamp=${timestamp}`;
-  }
-
   private async apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(`${BASE_URL}/${path}`);
     if (params) {
@@ -36,7 +29,7 @@ export class WhooingClient {
       }
     }
     const res = await fetch(url.toString(), {
-      headers: { "X-API-KEY": this.buildApiKey() },
+      headers: { "X-API-KEY": this.config.apiKey },
     });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -52,7 +45,7 @@ export class WhooingClient {
     const res = await fetch(`${BASE_URL}/${path}`, {
       method: "POST",
       headers: {
-        "X-API-KEY": this.buildApiKey(),
+        "X-API-KEY": this.config.apiKey,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams(
@@ -73,7 +66,7 @@ export class WhooingClient {
     const res = await fetch(`${BASE_URL}/${path}`, {
       method: "PUT",
       headers: {
-        "X-API-KEY": this.buildApiKey(),
+        "X-API-KEY": this.config.apiKey,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams(
@@ -104,23 +97,23 @@ export class WhooingClient {
   // --- Domain methods ---
 
   async getSections(): Promise<Section[]> {
-    return this.apiGet<Section[]>("app/sections.json");
+    return this.apiGet<Section[]>("sections.json");
   }
 
   async getAccounts(sectionId: string): Promise<AccountsResult> {
-    return this.apiGet<AccountsResult>(`app/${sectionId}/accounts.json`);
+    return this.apiGet<AccountsResult>("accounts.json", { section_id: sectionId });
   }
 
-  /** Returns an account_id → title map, cached per section. */
+  /** Returns an account_id → AccountEntry map, cached per section. */
   async loadAccountMap(sectionId: string): Promise<AccountMap> {
     if (this.accountCache.has(sectionId)) {
       return this.accountCache.get(sectionId)!;
     }
     const grouped = await this.getAccounts(sectionId);
     const map: AccountMap = new Map();
-    for (const accounts of Object.values(grouped)) {
+    for (const [accountType, accounts] of Object.entries(grouped)) {
       for (const acc of accounts) {
-        map.set(acc.account_id, acc.title);
+        map.set(acc.account_id, { title: acc.title, accountType });
       }
     }
     this.accountCache.set(sectionId, map);
@@ -133,31 +126,38 @@ export class WhooingClient {
     endDate: string,
     limit = 100
   ): Promise<Entry[]> {
-    return this.apiGet<Entry[]>(`app/${sectionId}/entries.json_array`, {
+    const result = await this.apiGet<EntriesResponse>("entries.json", {
+      section_id: sectionId,
       start_date: startDate,
       end_date: endDate,
       limit: String(limit),
     });
+    return result.rows ?? [];
   }
 
   async addEntry(
     sectionId: string,
     entryDate: string,
+    lAccount: string,
     lAccountId: string,
+    rAccount: string,
     rAccountId: string,
     money: number,
     item: string,
     memo?: string
   ): Promise<Entry> {
     const body: Record<string, string | number> = {
+      section_id: sectionId,
       entry_date: entryDate,
+      l_account: lAccount,
       l_account_id: lAccountId,
+      r_account: rAccount,
       r_account_id: rAccountId,
       money,
       item,
     };
     if (memo) body.memo = memo;
-    return this.apiPost<Entry>(`app/${sectionId}/entries.json_array`, body);
+    return this.apiPost<Entry>("entries.json", body);
   }
 
   async updateEntry(
@@ -165,21 +165,25 @@ export class WhooingClient {
     entryId: string,
     fields: {
       entry_date?: string;
+      l_account?: string;
       l_account_id?: string;
+      r_account?: string;
       r_account_id?: string;
       money?: number;
       item?: string;
       memo?: string;
     }
   ): Promise<Entry> {
-    const body: Record<string, string | number> = {};
+    const body: Record<string, string | number> = { section_id: sectionId };
     if (fields.entry_date !== undefined) body.entry_date = fields.entry_date;
+    if (fields.l_account !== undefined) body.l_account = fields.l_account;
     if (fields.l_account_id !== undefined) body.l_account_id = fields.l_account_id;
+    if (fields.r_account !== undefined) body.r_account = fields.r_account;
     if (fields.r_account_id !== undefined) body.r_account_id = fields.r_account_id;
     if (fields.money !== undefined) body.money = fields.money;
     if (fields.item !== undefined) body.item = fields.item;
     if (fields.memo !== undefined) body.memo = fields.memo;
-    return this.apiPut<Entry>(`app/${sectionId}/entries.json_array/${entryId}`, body);
+    return this.apiPut<Entry>(`entries/${entryId}.json`, body);
   }
 
   async getBalanceSheet(
@@ -187,10 +191,17 @@ export class WhooingClient {
     startDate: string,
     endDate: string
   ): Promise<BalanceSheet> {
-    return this.apiGet<BalanceSheet>(`app/${sectionId}/balance_sheet.json`, {
+    const result = await this.apiGet<ReportResult>("report/assets,liabilities.json", {
+      section_id: sectionId,
       start_date: startDate,
       end_date: endDate,
+      rows_type: "none",
     });
+    return {
+      assets: result.aggregate.assets ?? 0,
+      liabilities: result.aggregate.liabilities ?? 0,
+      capital: result.aggregate.capital ?? 0,
+    };
   }
 
   async getPLReport(
@@ -198,9 +209,16 @@ export class WhooingClient {
     startDate: string,
     endDate: string
   ): Promise<PLResult> {
-    return this.apiGet<PLResult>(`app/${sectionId}/pl.json`, {
+    const result = await this.apiGet<ReportResult>("report/expenses,income.json", {
+      section_id: sectionId,
       start_date: startDate,
       end_date: endDate,
+      rows_type: "none",
     });
+    return {
+      income: result.aggregate.income ?? 0,
+      expenses: result.aggregate.expenses ?? 0,
+      net_income: result.aggregate.net_income ?? 0,
+    };
   }
 }

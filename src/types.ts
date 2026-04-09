@@ -9,9 +9,7 @@ export interface ApiResponse<T> {
 
 // Authentication config
 export interface WhooingConfig {
-  appId: string;
-  token: string;
-  signature: string;
+  apiKey: string;
   defaultSectionId?: string;
 }
 
@@ -20,71 +18,76 @@ export interface Section {
   section_id: string;
   title: string;
   currency: string;
-  opened_at?: string;
+  memo?: string;
+  isolation?: string;
+  total_assets?: number;
+  total_liabilities?: number;
 }
 
-// Account type
+// Account type (outer key in AccountsResult)
 export type AccountType = "assets" | "liabilities" | "income" | "expenses" | "capital";
 
 // Account (계정/항목)
 export interface Account {
   account_id: string;
   title: string;
-  type: AccountType;
-  section_id: string;
-  opened_at?: string;
-  closed_at?: string | null;
+  type: "group" | "account";
+  memo?: string;
+  open_date?: number;
+  close_date?: number;
+  category?: string;
 }
 
-// account_id → title lookup map
-export type AccountMap = Map<string, string>;
+// AccountsResult: grouped by type
+export type AccountsResult = Record<string, Account[]>;
 
-// Entry (거래내역)
+// Per-account info in the lookup map (includes account type for API calls)
+export interface AccountEntry {
+  title: string;
+  accountType: string; // 'assets' | 'liabilities' | etc.
+}
+
+// account_id → AccountEntry lookup map
+export type AccountMap = Map<string, AccountEntry>;
+
+// Entry (거래내역) - entry_date is a float: YYYYMMDD.NNNN
 export interface Entry {
-  entry_id: string;
-  entry_date: string; // YYYYMMDD
+  entry_id: number;
+  entry_date: number;
+  l_account: string;
   l_account_id: string;
+  r_account: string;
   r_account_id: string;
   money: number;
   item: string;
   memo?: string;
-  created_at?: string;
-  updated_at?: string;
+  total?: number;
 }
 
-// Balance sheet account group
-export interface BalanceAccount {
-  account_id: string;
-  title?: string;
-  total: number;
+// Entries API response shape
+export interface EntriesResponse {
+  reports: unknown[];
+  rows: Entry[];
 }
 
-export interface BalanceGroup {
-  type: AccountType;
-  total: number;
-  accounts: BalanceAccount[];
+// Report API aggregate response (used for balance sheet and P&L)
+export interface ReportResult {
+  aggregate: Record<string, number>;
+  rows_type: string;
+  rows: Record<string, unknown>;
+  in_out?: Record<string, unknown>;
 }
 
+// Balance sheet (mapped from report/assets,liabilities API)
 export interface BalanceSheet {
-  assets: BalanceGroup;
-  liabilities: BalanceGroup;
-  capital?: BalanceGroup;
+  assets: number;
+  liabilities: number;
+  capital: number;
 }
 
-// P&L report
-export interface PLCategory {
-  account_id: string;
-  title?: string;
-  total: number;
-}
-
+// P&L report (mapped from report/expenses,income API)
 export interface PLResult {
-  income: PLCategory[];
-  expenses: PLCategory[];
-  income_total: number;
-  expenses_total: number;
-  net: number;
+  income: number;
+  expenses: number;
+  net_income: number;
 }
-
-// Accounts response (grouped by type)
-export type AccountsResult = Record<string, Account[]>;
