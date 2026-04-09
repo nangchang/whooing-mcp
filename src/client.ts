@@ -124,14 +124,36 @@ export class WhooingClient {
     sectionId: string,
     startDate: string,
     endDate: string,
-    limit = 100
+    options: {
+      limit?: number;
+      item?: string;
+      memo?: string;
+      accountId?: string;
+      account?: string;
+      moneyFrom?: number;
+      moneyTo?: number;
+      sortColumn?: string;
+      sortOrder?: string;
+    } = {}
   ): Promise<Entry[]> {
-    const result = await this.apiGet<EntriesResponse>("entries.json", {
+    const params: Record<string, string> = {
       section_id: sectionId,
       start_date: startDate,
       end_date: endDate,
-      limit: String(limit),
-    });
+      limit: String(options.limit ?? 20),
+    };
+    if (options.item) params.item = options.item;
+    if (options.memo) params.memo = options.memo;
+    if (options.accountId && options.account) {
+      params.account = options.account;
+      params.account_id = options.accountId;
+    }
+    if (options.moneyFrom !== undefined) params.money_from = String(options.moneyFrom);
+    if (options.moneyTo !== undefined) params.money_to = String(options.moneyTo);
+    if (options.sortColumn) params.sort_column = options.sortColumn;
+    if (options.sortOrder) params.sort_order = options.sortOrder;
+
+    const result = await this.apiGet<EntriesResponse>("entries.json", params);
     return result.rows ?? [];
   }
 

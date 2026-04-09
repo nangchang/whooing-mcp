@@ -72,7 +72,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
   // 3. List entries
   server.tool(
     "whooing_list_entries",
-    "지정한 기간의 거래내역을 조회합니다. 날짜는 YYYYMMDD 형식입니다.",
+    "거래내역을 조회합니다. 날짜(YYYYMMDD), 적요/메모 키워드, 계정 항목, 금액 범위로 필터링할 수 있습니다.",
     {
       start_date: z
         .string()
@@ -89,17 +89,68 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         .max(100)
         .optional()
         .describe("최대 조회 건수 (기본 20, 최대 100)"),
+      item: z
+        .string()
+        .optional()
+        .describe("적요 검색. 와일드카드 * 지원 (예: *커피*, 스타벅스*)"),
+      memo: z
+        .string()
+        .optional()
+        .describe("메모 검색. 공백은 AND 조건, ! prefix로 제외 (예: '카페 !라떼')"),
+      account_id: z
+        .string()
+        .optional()
+        .describe("특정 계정 항목 ID로 필터 (차변 또는 대변 중 한쪽이라도 일치하는 거래)"),
+      money_from: z
+        .number()
+        .int()
+        .optional()
+        .describe("최소 금액 필터"),
+      money_to: z
+        .number()
+        .int()
+        .optional()
+        .describe("최대 금액 필터"),
+      sort_column: z
+        .enum(["entry_date", "item", "money", "total"])
+        .optional()
+        .describe("정렬 기준 (기본: entry_date)"),
+      sort_order: z
+        .enum(["desc", "asc"])
+        .optional()
+        .describe("정렬 순서 (기본: desc)"),
       section_id: z
         .string()
         .optional()
         .describe("섹션 ID (미지정 시 기본값 사용)"),
     },
-    async ({ start_date, end_date, limit, section_id }) => {
+    async ({ start_date, end_date, limit, item, memo, account_id, money_from, money_to, sort_column, sort_order, section_id }) => {
       try {
         const sectionId = client.resolveSectionId(section_id);
         const startDate = start_date ?? firstDayOfMonth();
         const endDate = end_date ?? today();
-        const entries = await client.getEntries(sectionId, startDate, endDate, limit ?? 20);
+
+        let resolvedAccount: string | undefined;
+        if (account_id) {
+          const accountMap = await client.loadAccountMap(sectionId);
+          const entry = accountMap.get(account_id);
+          if (!entry) {
+            return err(new Error(`계정 항목 ID '${account_id}'를 찾을 수 없습니다. whooing_list_accounts로 올바른 ID를 확인하세요.`));
+          }
+          resolvedAccount = entry.accountType;
+        }
+
+        const entries = await client.getEntries(sectionId, startDate, endDate, {
+          limit,
+          item,
+          memo,
+          accountId: account_id,
+          account: resolvedAccount,
+          moneyFrom: money_from,
+          moneyTo: money_to,
+          sortColumn: sort_column,
+          sortOrder: sort_order,
+        });
         const accountMap = await client.loadAccountMap(sectionId);
         return ok(formatEntries(entries, accountMap));
       } catch (e) {
