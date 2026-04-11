@@ -11,10 +11,26 @@ import {
   formatPLReport,
 } from "./formatters.js";
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+/**
+ * Date 객체를 실행 환경의 로컬 날짜 기준 YYYYMMDD 문자열로 변환합니다.
+ */
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
 }
 
+/**
+ * 현재 로컬 날짜를 YYYYMMDD 형태의 문자열로 반환합니다.
+ */
+function today(): string {
+  return formatLocalDate(new Date());
+}
+
+/**
+ * 이번 달의 1일을 로컬 날짜 기준 YYYYMMDD 형태의 문자열로 반환합니다.
+ */
 function firstDayOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}01`;
@@ -23,17 +39,27 @@ function firstDayOfMonth(): string {
 type TextContent = { type: "text"; text: string };
 type ToolResult = { content: TextContent[] };
 
+/**
+ * 도구가 성공적으로 실행되었을 때 반환할 공통 응답 형식을 생성합니다.
+ */
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
 }
 
+/**
+ * 도구 실행 중 에러가 발생했을 때 반환할 에러 텍스트 형식을 생성합니다.
+ */
 function err(e: unknown): ToolResult {
   const msg = e instanceof Error ? e.message : String(e);
   return { content: [{ type: "text", text: `오류: ${msg}` }] };
 }
 
+/**
+ * MCP 서버에 모든 Whooing API 관련 도구(Tools)들을 등록합니다.
+ */
 export function registerTools(server: McpServer, client: WhooingClient): void {
-  // 1. List sections
+  // 1. 섹션 목록 조회 도구
+
   server.tool(
     "whooing_list_sections",
     "후잉 계정의 모든 섹션(가계부) 목록을 조회합니다.",
@@ -48,7 +74,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 2. List accounts
+  // 2. 계정 항목 목록 조회 도구 (자산, 부채, 수입, 지출 등)
   server.tool(
     "whooing_list_accounts",
     "지정한 섹션의 모든 계정/항목 목록을 조회합니다. (자산, 부채, 수입, 지출 계정)",
@@ -69,7 +95,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 3. List entries
+  // 3. 거래 내역 조회 도구 (특정 조건 필터링 포함)
   server.tool(
     "whooing_list_entries",
     "거래내역을 조회합니다. 날짜(YYYYMMDD), 적요/메모 키워드, 계정 항목, 금액 범위로 필터링할 수 있습니다.",
@@ -112,7 +138,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         .optional()
         .describe("최대 금액 필터"),
       sort_column: z
-        .enum(["entry_date", "item", "money", "total"])
+        .enum(["entry_date", "item", "money", "total", "l_account_id", "r_account_id"])
         .optional()
         .describe("정렬 기준 (기본: entry_date)"),
       sort_order: z
@@ -159,7 +185,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 4. Add entry
+  // 4. 새 거래 내역 추가 도구 (복식부기)
   server.tool(
     "whooing_add_entry",
     "새 거래를 입력합니다. 후잉은 복식부기 방식으로, 차변(l_account_id)과 대변(r_account_id) 계정 ID가 필요합니다. 계정 ID는 whooing_list_accounts 도구로 확인하세요.",
@@ -212,7 +238,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 5. Update entry
+  // 5. 기존 거래 내역 수정 도구
   server.tool(
     "whooing_update_entry",
     "기존 거래를 수정합니다. 수정할 필드만 지정하면 됩니다. 거래 ID는 whooing_list_entries 조회 결과에서 확인하세요.",
@@ -262,7 +288,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 6. Balance sheet
+  // 6. 잔액표(자산/부채/자본 현황) 조회 도구
   server.tool(
     "whooing_balance_sheet",
     "잔액표(자산/부채/순자산 현황)를 조회합니다.",
@@ -285,7 +311,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 7. P&L report
+  // 7. 손익 리포트(수입/지출 총계 및 순수익) 조회 도구
   server.tool(
     "whooing_pl_report",
     "손익 리포트(수입/지출 요약)를 조회합니다.",

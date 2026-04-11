@@ -2,6 +2,7 @@ import type {
   WhooingConfig,
   ApiResponse,
   Section,
+  AccountType,
   AccountMap,
   AccountsResult,
   Entry,
@@ -15,12 +16,18 @@ const BASE_URL = "https://whooing.com/api";
 
 export class WhooingClient {
   private config: WhooingConfig;
+  // 각 섹션별(section_id)로 조회한 계정 정보를 메모리에 임시 저장(캐시)하는 맵
   private accountCache: Map<string, AccountMap> = new Map();
 
   constructor(config: WhooingConfig) {
     this.config = config;
   }
 
+  /**
+   * Whooing API 서버로 HTTP GET 요청을 전송하는 범용 내부 메서드
+   * @param path API 엔드포인트 경로
+   * @param params URL 쿼리 파라미터 (옵션)
+   */
   private async apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(`${BASE_URL}/${path}`);
     if (params) {
@@ -41,6 +48,11 @@ export class WhooingClient {
     return json.results;
   }
 
+  /**
+   * Whooing API 서버로 HTTP POST 요청을 전송하는 범용 내부 메서드
+   * @param path API 엔드포인트 경로
+   * @param body POST 본문으로 보낼 데이터 객체
+   */
   private async apiPost<T>(path: string, body: Record<string, string | number>): Promise<T> {
     const res = await fetch(`${BASE_URL}/${path}`, {
       method: "POST",
@@ -62,6 +74,11 @@ export class WhooingClient {
     return json.results;
   }
 
+  /**
+   * Whooing API 서버로 HTTP PUT 요청을 전송하는 범용 내부 메서드
+   * @param path API 엔드포인트 경로
+   * @param body PUT 본문으로 보낼 수정 데이터 객체
+   */
   private async apiPut<T>(path: string, body: Record<string, string | number>): Promise<T> {
     const res = await fetch(`${BASE_URL}/${path}`, {
       method: "PUT",
@@ -83,7 +100,11 @@ export class WhooingClient {
     return json.results;
   }
 
-  // Resolve section ID (use provided or fall back to default)
+  /**
+   * 사용할 섹션 ID를 확인합니다. 파라미터로 주어진 ID가 없으면 설정된 기본 섹션 ID를 반환합니다.
+   * @param sectionId 지정된 섹션 ID (optional)
+   * @throws 섹션 ID가 전혀 설정되어 있지 않을 경우 예외 발생
+   */
   resolveSectionId(sectionId?: string): string {
     const id = sectionId ?? this.config.defaultSectionId;
     if (!id) {
@@ -94,24 +115,32 @@ export class WhooingClient {
     return id;
   }
 
-  // --- Domain methods ---
+  // --- 도메인 메서드 (Domain methods) ---
 
+  /** 모든 섹션(가계부 단위) 목록을 조회합니다. */
   async getSections(): Promise<Section[]> {
     return this.apiGet<Section[]>("sections.json");
   }
 
+  /** 특정 섹션에 포함된 모든 계정 및 항목을 유형별로 그룹화하여 조회합니다. */
   async getAccounts(sectionId: string): Promise<AccountsResult> {
     return this.apiGet<AccountsResult>("accounts.json", { section_id: sectionId });
   }
 
-  /** Returns an account_id → AccountEntry map, cached per section. */
+  /**
+   * account_id를 키값으로 하여 빠르게 계정 정보를 찾을 수 있는 AccountMap을 생성하고 반환합니다.
+   * 네트워크와 API 호출을 아끼기 위해 각 섹션별로 캐싱(Caching)을 사용합니다.
+   */
   async loadAccountMap(sectionId: string): Promise<AccountMap> {
     if (this.accountCache.has(sectionId)) {
       return this.accountCache.get(sectionId)!;
     }
     const grouped = await this.getAccounts(sectionId);
     const map: AccountMap = new Map();
-    for (const [accountType, accounts] of Object.entries(grouped)) {
+    const groupedEntries = Object.entries(grouped) as Array<
+      [AccountType, AccountsResult[AccountType]]
+    >;
+    for (const [accountType, accounts] of groupedEntries) {
       for (const acc of accounts) {
         map.set(acc.account_id, { title: acc.title, accountType });
       }
@@ -120,6 +149,9 @@ export class WhooingClient {
     return map;
   }
 
+  /**
+   * 범위가 지정된 특정 조건에 맞추어 거래 내역 목록을 조회합니다.
+   */
   async getEntries(
     sectionId: string,
     startDate: string,
@@ -157,6 +189,9 @@ export class WhooingClient {
     return result.rows ?? [];
   }
 
+  /**
+   * 새로운 거래 내역을 작성하여 추가합니다. (복식부기 방식에 따라 차변과 대변 정보 모두 필요)
+   */
   async addEntry(
     sectionId: string,
     entryDate: string,
@@ -182,6 +217,10 @@ export class WhooingClient {
     return this.apiPost<Entry>("entries.json", body);
   }
 
+  /**
+   * 기존에 작성된 거래 내역을 수정합니다.
+   * 수정을 원하는 프로퍼티만 객체(fields)에 담아 전달하면, 해당 값만 업데이트 처리됩니다.
+   */
   async updateEntry(
     sectionId: string,
     entryId: string,
@@ -208,6 +247,9 @@ export class WhooingClient {
     return this.apiPut<Entry>(`entries/${entryId}.json`, body);
   }
 
+  /**
+   * 특정 섹션에서 명시된 기간 동안의 잔액표(자산/부채/자본 요약) 데이터를 조회합니다.
+   */
   async getBalanceSheet(
     sectionId: string,
     startDate: string,
@@ -226,6 +268,9 @@ export class WhooingClient {
     };
   }
 
+  /**
+   * 구간 손익 리포트(선택 기간 내의 수입 및 지출 총계, 순이익 요약) 정보를 조회합니다.
+   */
   async getPLReport(
     sectionId: string,
     startDate: string,
