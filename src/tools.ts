@@ -10,6 +10,7 @@ import {
   formatBalanceSheet,
   formatPLReport,
 } from "./formatters.js";
+import type { AccountEntry } from "./types.js";
 
 /**
  * Date 객체를 실행 환경의 로컬 날짜 기준 YYYYMMDD 문자열로 변환합니다.
@@ -55,6 +56,25 @@ function err(e: unknown): ToolResult {
 }
 
 /**
+ * 거래 입력/수정/필터에 사용할 수 있는 실제 거래 항목인지 확인합니다.
+ */
+function validateTransactionAccount(
+  entry: AccountEntry,
+  accountId: string,
+  label: string
+): ToolResult | undefined {
+  if (entry.type === "account") {
+    return undefined;
+  }
+
+  return err(
+    new Error(
+      `${label} ID '${accountId}'는 분류용 그룹입니다. 거래에는 whooing_list_accounts에서 '거래 항목'으로 표시된 ID를 사용하세요.`
+    )
+  );
+}
+
+/**
  * MCP 서버에 모든 Whooing API 관련 도구(Tools)들을 등록합니다.
  */
 export function registerTools(server: McpServer, client: WhooingClient): void {
@@ -74,10 +94,10 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 2. 계정 항목 목록 조회 도구 (자산, 부채, 수입, 지출 등)
+  // 2. 계정 항목 목록 조회 도구 (자산, 부채, 자본, 수입, 지출 등)
   server.tool(
     "whooing_list_accounts",
-    "지정한 섹션의 모든 계정/항목 목록을 조회합니다. (자산, 부채, 수입, 지출 계정)",
+    "지정한 섹션의 모든 계정/항목 목록을 조회합니다. (자산, 부채, 자본, 수입, 지출 계정)",
     {
       section_id: z
         .string()
@@ -163,6 +183,8 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           if (!entry) {
             return err(new Error(`계정 항목 ID '${account_id}'를 찾을 수 없습니다. whooing_list_accounts로 올바른 ID를 확인하세요.`));
           }
+          const validationError = validateTransactionAccount(entry, account_id, "계정 항목");
+          if (validationError) return validationError;
           resolvedAccount = entry.accountType;
         }
 
@@ -211,6 +233,9 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
             )
           );
         }
+        const lValidationError = validateTransactionAccount(lEntry, l_account_id, "차변 계정");
+        if (lValidationError) return lValidationError;
+
         const rEntry = accountMap.get(r_account_id);
         if (!rEntry) {
           return err(
@@ -219,6 +244,8 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
             )
           );
         }
+        const rValidationError = validateTransactionAccount(rEntry, r_account_id, "대변 계정");
+        if (rValidationError) return rValidationError;
 
         const entry = await client.addEntry(
           sectionId,
@@ -261,6 +288,8 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         if (l_account_id) {
           const lEntry = accountMap.get(l_account_id);
           if (!lEntry) return err(new Error(`차변 계정 ID '${l_account_id}'를 찾을 수 없습니다.`));
+          const validationError = validateTransactionAccount(lEntry, l_account_id, "차변 계정");
+          if (validationError) return validationError;
           lAccount = lEntry.accountType;
         }
 
@@ -268,6 +297,8 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         if (r_account_id) {
           const rEntry = accountMap.get(r_account_id);
           if (!rEntry) return err(new Error(`대변 계정 ID '${r_account_id}'를 찾을 수 없습니다.`));
+          const validationError = validateTransactionAccount(rEntry, r_account_id, "대변 계정");
+          if (validationError) return validationError;
           rAccount = rEntry.accountType;
         }
 

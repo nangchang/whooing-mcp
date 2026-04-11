@@ -52,7 +52,8 @@ export function formatAccounts(grouped: AccountsResult): string {
     const label = TYPE_LABEL[type] ?? type;
     lines.push(`### ${label}`);
     for (const acc of accounts) {
-      lines.push(`- ${acc.title} (ID: \`${acc.account_id}\`)`);
+      const kind = acc.type === "group" ? "그룹" : "거래 항목";
+      lines.push(`- ${acc.title} (${kind}, ID: \`${acc.account_id}\`)`);
     }
     lines.push("");
   }

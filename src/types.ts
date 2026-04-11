@@ -46,6 +46,7 @@ export type AccountsResult = Record<AccountType, Account[]>;
 export interface AccountEntry {
   title: string;
   accountType: AccountType;
+  type: Account["type"]; // group은 분류용, account는 거래에 사용할 수 있는 항목
 }
 
 // 계정 ID(account_id)를 키로 하여 AccountEntry를 빠르게 찾기 위한 맵 자료구조

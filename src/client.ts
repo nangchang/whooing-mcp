@@ -142,7 +142,7 @@ export class WhooingClient {
     >;
     for (const [accountType, accounts] of groupedEntries) {
       for (const acc of accounts) {
-        map.set(acc.account_id, { title: acc.title, accountType });
+        map.set(acc.account_id, { title: acc.title, accountType, type: acc.type });
       }
     }
     this.accountCache.set(sectionId, map);
