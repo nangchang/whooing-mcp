@@ -276,8 +276,8 @@ export class WhooingClient {
   /**
    * 기존에 작성된 거래 내역을 삭제합니다.
    */
-  async deleteEntry(sectionId: string, entryId: string): Promise<void> {
-    await this.apiDelete<unknown>(`entries/${entryId}.json`, { section_id: sectionId });
+  async deleteEntry(sectionId: string, entryId: string): Promise<Entry> {
+    return this.apiDelete<Entry>(`entries/${entryId}.json`, { section_id: sectionId });
   }
 
   /**
