@@ -75,6 +75,32 @@ export class WhooingClient {
   }
 
   /**
+   * Whooing API 서버로 HTTP DELETE 요청을 전송하는 범용 내부 메서드
+   * @param path API 엔드포인트 경로
+   * @param params URL 쿼리 파라미터 (옵션)
+   */
+  private async apiDelete<T>(path: string, params?: Record<string, string>): Promise<T> {
+    const url = new URL(`${BASE_URL}/${path}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+    }
+    const res = await fetch(url.toString(), {
+      method: "DELETE",
+      headers: { "X-API-KEY": this.config.apiKey },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    const json = (await res.json()) as ApiResponse<T>;
+    if (json.code !== 200) {
+      throw new Error(`Whooing API error ${json.code}: ${json.message}`);
+    }
+    return json.results;
+  }
+
+  /**
    * Whooing API 서버로 HTTP PUT 요청을 전송하는 범용 내부 메서드
    * @param path API 엔드포인트 경로
    * @param body PUT 본문으로 보낼 수정 데이터 객체
@@ -245,6 +271,13 @@ export class WhooingClient {
     if (fields.item !== undefined) body.item = fields.item;
     if (fields.memo !== undefined) body.memo = fields.memo;
     return this.apiPut<Entry>(`entries/${entryId}.json`, body);
+  }
+
+  /**
+   * 기존에 작성된 거래 내역을 삭제합니다.
+   */
+  async deleteEntry(sectionId: string, entryId: string): Promise<Entry> {
+    return this.apiDelete<Entry>(`entries/${entryId}.json`, { section_id: sectionId });
   }
 
   /**

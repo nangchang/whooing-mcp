@@ -319,7 +319,28 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 6. 잔액표(자산/부채/자본 현황) 조회 도구
+  // 6. 거래 내역 삭제 도구
+  server.tool(
+    "whooing_delete_entry",
+    "거래를 삭제합니다. 거래 ID는 whooing_list_entries 조회 결과에서 확인하세요. 삭제는 되돌릴 수 없으니 주의하세요.",
+    {
+      entry_id: z.string().describe("삭제할 거래 ID"),
+      section_id: z.string().optional().describe("섹션 ID (미지정 시 기본값 사용)"),
+    },
+    async ({ entry_id, section_id }) => {
+      try {
+        const sectionId = client.resolveSectionId(section_id);
+        const accountMap = await client.loadAccountMap(sectionId);
+        const deleted = await client.deleteEntry(sectionId, entry_id);
+        const detail = formatEntries([deleted], accountMap);
+        return ok(`거래 ID '${entry_id}'가 삭제되었습니다.\n\n${detail}`);
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  // 7. 잔액표(자산/부채/자본 현황) 조회 도구 (구 6번에서 변경)
   server.tool(
     "whooing_balance_sheet",
     "잔액표(자산/부채/순자산 현황)를 조회합니다.",
@@ -342,7 +363,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 7. 손익 리포트(수입/지출 총계 및 순수익) 조회 도구
+  // 8. 손익 리포트(수입/지출 총계 및 순수익) 조회 도구
   server.tool(
     "whooing_pl_report",
     "손익 리포트(수입/지출 요약)를 조회합니다.",
