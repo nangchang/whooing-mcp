@@ -9,7 +9,7 @@ import {
   formatBalanceSheet,
   formatPLReport,
 } from "./formatters.js";
-import type { AccountEntry, Entry } from "./types.js";
+import type { AccountEntry, BatchEntryInput, Entry } from "./types.js";
 
 /**
  * Date 객체를 실행 환경의 로컬 날짜 기준 YYYYMMDD 문자열로 변환합니다.
@@ -217,9 +217,13 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
       money: z.number().int().min(1).describe("금액 (원 단위 양의 정수)"),
       item: z.string().describe("적요 (거래 내용 설명)"),
       memo: z.string().optional().describe("메모 (선택)"),
+      check_duplicate: z
+        .boolean()
+        .optional()
+        .describe("true이면 같은 날짜·차변·대변·금액의 기존 거래를 확인하고 중복 발견 시 등록을 중단합니다 (기본 false)"),
       section_id: z.string().optional().describe("섹션 ID (미지정 시 기본값 사용)"),
     },
-    async ({ entry_date, l_account_id, r_account_id, money, item, memo, section_id }) => {
+    async ({ entry_date, l_account_id, r_account_id, money, item, memo, check_duplicate, section_id }) => {
       try {
         const sectionId = client.resolveSectionId(section_id);
         const accountMap = await client.loadAccountMap(sectionId);
@@ -247,6 +251,25 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         if (rValidationError) return rValidationError;
 
         const normalizedDate = entry_date.replace(/[^0-9]/g, "");
+
+        if (check_duplicate) {
+          const existing = await client.getEntries(sectionId, normalizedDate, normalizedDate, {
+            limit: 100,
+          });
+          const dup = existing.find(
+            (e) =>
+              e.l_account_id === l_account_id &&
+              e.r_account_id === r_account_id &&
+              e.money === money
+          );
+          if (dup) {
+            const dupFormatted = formatEntries([dup], accountMap);
+            return ok(
+              `## 중복 거래 발견 — 등록 중단\n\n동일한 날짜·계정·금액의 거래가 이미 존재합니다.\n\n${dupFormatted}\n\n등록을 강행하려면 \`check_duplicate: false\`로 다시 요청하세요.`
+            );
+          }
+        }
+
         const saved = await client.addEntry(
           sectionId,
           normalizedDate,
@@ -287,7 +310,76 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 5. 기존 거래 내역 수정 도구
+  // 5. 거래 일괄 등록 도구
+  server.tool(
+    "whooing_add_entries",
+    "여러 거래를 한 번에 일괄 등록합니다. 최대 300건까지 가능합니다. 계정 ID는 whooing_list_accounts 또는 whooing_find_account 도구로 확인하세요.",
+    {
+      entries: z
+        .array(
+          z.object({
+            entry_date: z.string().describe("거래 날짜 (YYYYMMDD)"),
+            l_account_id: z.string().describe("차변 계정 ID"),
+            r_account_id: z.string().describe("대변 계정 ID"),
+            money: z.number().int().min(1).describe("금액 (원 단위 양의 정수)"),
+            item: z.string().describe("적요"),
+            memo: z.string().optional().describe("메모 (선택)"),
+          })
+        )
+        .min(1)
+        .max(300)
+        .describe("등록할 거래 목록 (1~300건)"),
+      section_id: z.string().optional().describe("섹션 ID (미지정 시 기본값 사용)"),
+    },
+    async ({ entries, section_id }) => {
+      try {
+        const sectionId = client.resolveSectionId(section_id);
+        const accountMap = await client.loadAccountMap(sectionId);
+
+        // 모든 계정 ID를 미리 검증
+        for (const [i, e] of entries.entries()) {
+          const lEntry = accountMap.get(e.l_account_id);
+          if (!lEntry) {
+            return err(new Error(`[${i + 1}번] 차변 계정 ID '${e.l_account_id}'를 찾을 수 없습니다.`));
+          }
+          const lErr = validateTransactionAccount(lEntry, e.l_account_id, `[${i + 1}번] 차변 계정`);
+          if (lErr) return lErr;
+
+          const rEntry = accountMap.get(e.r_account_id);
+          if (!rEntry) {
+            return err(new Error(`[${i + 1}번] 대변 계정 ID '${e.r_account_id}'를 찾을 수 없습니다.`));
+          }
+          const rErr = validateTransactionAccount(rEntry, e.r_account_id, `[${i + 1}번] 대변 계정`);
+          if (rErr) return rErr;
+        }
+
+        const batchEntries: BatchEntryInput[] = entries.map((e) => {
+          const lEntry = accountMap.get(e.l_account_id)!;
+          const rEntry = accountMap.get(e.r_account_id)!;
+          const input: BatchEntryInput = {
+            entry_date: Number(e.entry_date.replace(/[^0-9]/g, "")),
+            l_account: lEntry.accountType,
+            l_account_id: e.l_account_id,
+            r_account: rEntry.accountType,
+            r_account_id: e.r_account_id,
+            money: e.money,
+            item: e.item,
+          };
+          if (e.memo) input.memo = e.memo;
+          return input;
+        });
+
+        const saved = await client.addEntries(sectionId, batchEntries) as unknown as Record<string, unknown>[];
+        const results = Array.isArray(saved) ? saved : [saved];
+        const ids = results.map((r) => `\`${r.entry_id}\``).join(", ");
+        return ok(`## 일괄 등록 완료\n\n${results.length}건이 등록되었습니다 (ID: ${ids}).\n정확한 내용은 \`whooing_list_entries\`로 확인하세요.`);
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  // 6. 기존 거래 내역 수정 도구
   server.tool(
     "whooing_update_entry",
     "기존 거래를 수정합니다. 수정할 필드만 지정하면 됩니다. 거래 ID는 whooing_list_entries 조회 결과에서 확인하세요.",
@@ -341,7 +433,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 6. 거래 내역 삭제 도구
+  // 7. 거래 내역 삭제 도구
   server.tool(
     "whooing_delete_entry",
     "거래를 삭제합니다. 거래 ID는 whooing_list_entries 조회 결과에서 확인하세요. 삭제는 되돌릴 수 없으니 주의하세요.",
@@ -360,7 +452,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 7. 잔액표(자산/부채/자본 현황) 조회 도구 (구 6번에서 변경)
+  // 8. 잔액표(자산/부채/자본 현황) 조회 도구
   server.tool(
     "whooing_balance_sheet",
     "잔액표(자산/부채/순자산 현황)를 조회합니다.",
@@ -383,7 +475,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     }
   );
 
-  // 8. 손익 리포트(수입/지출 총계 및 순수익) 조회 도구
+  // 9. 손익 리포트(수입/지출 총계 및 순수익) 조회 도구
   server.tool(
     "whooing_pl_report",
     "손익 리포트(수입/지출 요약)를 조회합니다.",
@@ -400,6 +492,47 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const pl = await client.getPLReport(sectionId, startDate, endDate);
         const dateRange = `${startDate} ~ ${endDate}`;
         return ok(formatPLReport(pl, dateRange));
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  // 10. 계정명으로 계정 검색 도구
+  server.tool(
+    "whooing_find_account",
+    "계정 이름으로 계정 ID를 검색합니다. 부분 일치를 지원하며 일치하는 모든 계정을 반환합니다. 거래에 바로 쓸 수 있는 계정인지 여부(거래 항목/그룹)도 표시됩니다.",
+    {
+      name: z.string().describe("검색할 계정 이름 (부분 일치)"),
+      section_id: z.string().optional().describe("섹션 ID (미지정 시 기본값 사용)"),
+    },
+    async ({ name, section_id }) => {
+      try {
+        const sectionId = client.resolveSectionId(section_id);
+        const accountMap = await client.loadAccountMap(sectionId);
+
+        const keyword = name.toLowerCase();
+        const matches: { id: string; entry: AccountEntry }[] = [];
+        for (const [id, entry] of accountMap.entries()) {
+          if (entry.title.toLowerCase().includes(keyword)) {
+            matches.push({ id, entry });
+          }
+        }
+
+        if (matches.length === 0) {
+          return ok(`'${name}'과 일치하는 계정이 없습니다. whooing_list_accounts로 전체 목록을 확인하세요.`);
+        }
+
+        const TYPE_LABEL: Record<string, string> = {
+          assets: "자산", liabilities: "부채", income: "수입", expenses: "지출", capital: "자본",
+        };
+        const lines = [`## '${name}' 검색 결과 (${matches.length}건)\n`];
+        for (const { id, entry } of matches) {
+          const typeLabel = TYPE_LABEL[entry.accountType] ?? entry.accountType;
+          const kind = entry.type === "account" ? "거래 항목" : "그룹 (거래 불가)";
+          lines.push(`- **${entry.title}** | ${typeLabel} | ${kind} | ID: \`${id}\``);
+        }
+        return ok(lines.join("\n"));
       } catch (e) {
         return err(e);
       }

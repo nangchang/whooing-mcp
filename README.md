@@ -69,8 +69,11 @@ claude mcp add --scope user whooing /절대/경로/node /절대/경로/whooing/d
 |------|------|
 | `whooing_list_sections` | 모든 섹션(가계부) 목록 조회 |
 | `whooing_list_accounts` | 계정/항목 목록 조회 (자산, 부채, 수입, 지출) |
+| `whooing_find_account` | 계정 이름으로 계정 ID 검색 (부분 일치) |
 | `whooing_list_entries` | 거래내역 조회 (기간 필터 지원) |
-| `whooing_add_entry` | 새 거래 입력 |
+| `whooing_add_entry` | 새 거래 입력 (`check_duplicate` 옵션으로 중복 방지 가능) |
+| `whooing_add_entries` | 여러 거래 일괄 입력 (최대 300건) |
 | `whooing_update_entry` | 기존 거래 수정 |
+| `whooing_delete_entry` | 거래 삭제 |
 | `whooing_balance_sheet` | 잔액표 조회 (자산/부채/순자산) |
 | `whooing_pl_report` | 손익 리포트 조회 (수입/지출 요약) |

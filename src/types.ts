@@ -94,3 +94,15 @@ export interface PLResult {
   expenses: number;
   net_income: number; // 순손익 = 수입 - 지출
 }
+
+// 배치 입력 시 entries 배열의 각 항목
+export interface BatchEntryInput {
+  entry_date?: number;
+  l_account: string;
+  l_account_id: string;
+  r_account: string;
+  r_account_id: string;
+  money: number;
+  item?: string;
+  memo?: string;
+}
