@@ -259,12 +259,18 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           memo
         ) as unknown as Record<string, unknown>;
 
-        // Whooing POST response only includes entry_id; build display entry from inputs
-        const rawId = Array.isArray(saved)
-          ? (saved[0] as Record<string, unknown>)?.entry_id
-          : saved?.entry_id;
+        // Whooing POST response only includes entry_id; build display entry from inputs.
+        // Repeat/split commands (**n, //n) return an array of entries — report all IDs.
+        if (Array.isArray(saved)) {
+          const ids = (saved as Record<string, unknown>[])
+            .map((e) => `\`${e.entry_id}\``)
+            .join(", ");
+          return ok(
+            `## 거래 입력 완료\n\n${saved.length}건이 생성되었습니다 (ID: ${ids}).\n정확한 내용은 \`whooing_list_entries\`로 확인하세요.`
+          );
+        }
         const displayEntry: Entry = {
-          entry_id: Number(rawId ?? 0),
+          entry_id: Number(saved?.entry_id ?? 0),
           entry_date: Number(normalizedDate),
           l_account: lEntry.accountType,
           l_account_id,
