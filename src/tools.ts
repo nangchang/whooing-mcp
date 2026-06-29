@@ -251,10 +251,17 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         if (rValidationError) return rValidationError;
 
         const normalizedDate = entry_date.replace(/[^0-9]/g, "");
+        if (normalizedDate.length !== 8) {
+          return err(new Error("거래 날짜는 YYYYMMDD 형식이어야 합니다."));
+        }
 
         if (check_duplicate) {
           const existing = await client.getEntries(sectionId, normalizedDate, normalizedDate, {
             limit: 100,
+            accountId: l_account_id,
+            account: lEntry.accountType,
+            moneyFrom: money,
+            moneyTo: money,
           });
           const dup = existing.find(
             (e) =>
@@ -336,8 +343,13 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const sectionId = client.resolveSectionId(section_id);
         const accountMap = await client.loadAccountMap(sectionId);
 
-        // 모든 계정 ID를 미리 검증
+        // 모든 계정 ID 및 날짜 미리 검증
         for (const [i, e] of entries.entries()) {
+          const normalizedEntryDate = e.entry_date.replace(/[^0-9]/g, "");
+          if (normalizedEntryDate.length !== 8) {
+            return err(new Error(`[${i + 1}번] 거래 날짜 '${e.entry_date}'는 YYYYMMDD 형식이어야 합니다.`));
+          }
+
           const lEntry = accountMap.get(e.l_account_id);
           if (!lEntry) {
             return err(new Error(`[${i + 1}번] 차변 계정 ID '${e.l_account_id}'를 찾을 수 없습니다.`));
@@ -369,7 +381,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           return input;
         });
 
-        const saved = await client.addEntries(sectionId, batchEntries) as unknown as Record<string, unknown>[];
+        const saved = await client.addEntries(sectionId, batchEntries);
         const results = Array.isArray(saved) ? saved : [saved];
         const ids = results.map((r) => `\`${r.entry_id}\``).join(", ");
         return ok(`## 일괄 등록 완료\n\n${results.length}건이 등록되었습니다 (ID: ${ids}).\n정확한 내용은 \`whooing_list_entries\`로 확인하세요.`);
@@ -503,7 +515,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
     "whooing_find_account",
     "계정 이름으로 계정 ID를 검색합니다. 부분 일치를 지원하며 일치하는 모든 계정을 반환합니다. 거래에 바로 쓸 수 있는 계정인지 여부(거래 항목/그룹)도 표시됩니다.",
     {
-      name: z.string().describe("검색할 계정 이름 (부분 일치)"),
+      name: z.string().min(1).describe("검색할 계정 이름 (부분 일치)"),
       section_id: z.string().optional().describe("섹션 ID (미지정 시 기본값 사용)"),
     },
     async ({ name, section_id }) => {
