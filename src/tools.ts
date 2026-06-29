@@ -246,9 +246,10 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         const rValidationError = validateTransactionAccount(rEntry, r_account_id, "대변 계정");
         if (rValidationError) return rValidationError;
 
+        const normalizedDate = entry_date.replace(/[^0-9]/g, "");
         const saved = await client.addEntry(
           sectionId,
-          entry_date,
+          normalizedDate,
           lEntry.accountType,
           l_account_id,
           rEntry.accountType,
@@ -264,7 +265,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           : saved?.entry_id;
         const displayEntry: Entry = {
           entry_id: Number(rawId ?? 0),
-          entry_date: Number(entry_date),
+          entry_date: Number(normalizedDate),
           l_account: lEntry.accountType,
           l_account_id,
           r_account: rEntry.accountType,
@@ -318,7 +319,7 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         }
 
         await client.updateEntry(sectionId, entry_id, {
-          entry_date,
+          entry_date: entry_date ? entry_date.replace(/[^0-9]/g, "") : undefined,
           l_account: lAccount,
           l_account_id,
           r_account: rAccount,
