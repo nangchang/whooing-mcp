@@ -103,26 +103,6 @@ export function formatNewEntry(entry: Entry, accountMap: AccountMap): string {
 }
 
 /**
- * 수정된 거래 데이터를 읽기 쉬운 Markdown 결과로 출력합니다.
- */
-export function formatUpdatedEntry(entry: Entry, accountMap: AccountMap): string {
-  const lName = accountMap.get(entry.l_account_id)?.title ?? entry.l_account_id;
-  const rName = accountMap.get(entry.r_account_id)?.title ?? entry.r_account_id;
-  return [
-    "## 거래 수정 완료\n",
-    `- **날짜**: ${formatEntryDate(entry.entry_date)}`,
-    `- **적요**: ${entry.item}`,
-    `- **금액**: ${formatAmount(entry.money)}`,
-    `- **차변 (L)**: ${lName}`,
-    `- **대변 (R)**: ${rName}`,
-    entry.memo ? `- **메모**: ${entry.memo}` : "",
-    `- **거래 ID**: \`${entry.entry_id}\``,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/**
  * 잔액표(자산/부채/자본 현황) 정보를 Markdown 변환하여 출력합니다.
  */
 export function formatBalanceSheet(balance: BalanceSheet, dateRange: string): string {
