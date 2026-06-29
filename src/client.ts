@@ -10,6 +10,7 @@ import type {
   ReportResult,
   BalanceSheet,
   PLResult,
+  BatchEntryInput,
 } from "./types.js";
 
 const BASE_URL = "https://whooing.com/api";
@@ -241,6 +242,17 @@ export class WhooingClient {
     };
     if (memo) body.memo = memo;
     return this.apiPost<Entry>("entries.json", body);
+  }
+
+  /**
+   * 여러 거래 내역을 한 번의 API 호출로 일괄 추가합니다. (최대 300건)
+   */
+  async addEntries(sectionId: string, entries: BatchEntryInput[]): Promise<{ entry_id: number }[]> {
+    return this.apiPost<{ entry_id: number }[]>("entries.json", {
+      section_id: sectionId,
+      data_type: "json",
+      entries: JSON.stringify(entries),
+    });
   }
 
   /**
