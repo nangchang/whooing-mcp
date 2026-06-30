@@ -164,12 +164,16 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
         .enum(["desc", "asc"])
         .optional()
         .describe("정렬 순서 (기본: desc)"),
+      cursor: z
+        .string()
+        .optional()
+        .describe("페이지네이션 커서 (이전 응답의 next_cursor 값). sort_column/sort_order 미지정 또는 entry_date desc 정렬 시에만 유효"),
       section_id: z
         .string()
         .optional()
         .describe("섹션 ID (미지정 시 기본값 사용)"),
     },
-    async ({ start_date, end_date, limit, item, memo, account_id, money_from, money_to, sort_column, sort_order, section_id }) => {
+    async ({ start_date, end_date, limit, item, memo, account_id, money_from, money_to, sort_column, sort_order, cursor, section_id }) => {
       try {
         const sectionId = client.resolveSectionId(section_id);
         const startDate = start_date ?? firstDayOfMonth();
@@ -197,9 +201,21 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           moneyTo: money_to,
           sortColumn: sort_column,
           sortOrder: sort_order,
+          max: cursor,
         });
         const accountMap = await client.loadAccountMap(sectionId);
-        return ok(formatEntries(entries, accountMap));
+
+        // entry_date desc(기본) 정렬에서만 cursor 제공 — 다른 정렬 기준에서는 max가 올바르게 동작하지 않음
+        const canPaginate =
+          (!sort_column || sort_column === "entry_date") &&
+          (!sort_order || sort_order === "desc");
+        const effectiveLimit = limit ?? 20;
+        const nextCursor =
+          canPaginate && entries.length === effectiveLimit && entries.length > 0
+            ? String(entries[entries.length - 1].entry_date)
+            : undefined;
+
+        return ok(formatEntries(entries, accountMap, nextCursor));
       } catch (e) {
         return err(e);
       }

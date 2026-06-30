@@ -65,7 +65,7 @@ export function formatAccounts(grouped: AccountsResult): string {
  * @param entries 거래 내역 배열
  * @param accountMap 계정 ID를 이름으로 바꿔주기 위한 맵
  */
-export function formatEntries(entries: Entry[], accountMap: AccountMap): string {
+export function formatEntries(entries: Entry[], accountMap: AccountMap, nextCursor?: string): string {
   if (!entries || entries.length === 0) {
     return "해당 기간에 거래가 없습니다.";
   }
@@ -77,6 +77,9 @@ export function formatEntries(entries: Entry[], accountMap: AccountMap): string 
     lines.push(
       `- **${formatEntryDate(e.entry_date)}** ${e.item} | ${formatAmount(e.money)} | ${lName} ← ${rName}${memo} (ID: \`${e.entry_id}\`)`
     );
+  }
+  if (nextCursor !== undefined) {
+    lines.push(`\n---\n다음 페이지: \`cursor: "${nextCursor}"\`를 사용하세요.`);
   }
   return lines.join("\n");
 }

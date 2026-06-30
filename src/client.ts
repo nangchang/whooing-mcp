@@ -193,6 +193,7 @@ export class WhooingClient {
       moneyTo?: number;
       sortColumn?: string;
       sortOrder?: string;
+      max?: string;
     } = {}
   ): Promise<Entry[]> {
     const params: Record<string, string> = {
@@ -211,6 +212,7 @@ export class WhooingClient {
     if (options.moneyTo !== undefined) params.money_to = String(options.moneyTo);
     if (options.sortColumn) params.sort_column = options.sortColumn;
     if (options.sortOrder) params.sort_order = options.sortOrder;
+    if (options.max !== undefined) params.max = options.max;
 
     const result = await this.apiGet<EntriesResponse>("entries.json", params);
     return result.rows ?? [];
