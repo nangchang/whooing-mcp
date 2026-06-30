@@ -79,7 +79,7 @@ export function formatEntries(entries: Entry[], accountMap: AccountMap, nextCurs
     );
   }
   if (nextCursor !== undefined) {
-    lines.push(`\n---\n다음 페이지: \`cursor: "${nextCursor}"\`를 사용하세요.`);
+    lines.push(`\n---\n다음 페이지: 동일한 날짜 범위와 필터를 유지하고 \`cursor: "${nextCursor}"\`를 추가하세요.`);
   }
   return lines.join("\n");
 }

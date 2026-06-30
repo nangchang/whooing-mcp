@@ -210,12 +210,19 @@ export function registerTools(server: McpServer, client: WhooingClient): void {
           (!sort_column || sort_column === "entry_date") &&
           (!sort_order || sort_order === "desc");
         const effectiveLimit = limit ?? 20;
+
+        // Whooing API의 max 파라미터는 inclusive이므로 cursor와 동일한 첫 번째 항목을 제거
+        let displayEntries = entries;
+        if (cursor && entries.length > 0 && String(entries[0].entry_date) === cursor) {
+          displayEntries = entries.slice(1);
+        }
+
         const nextCursor =
-          canPaginate && entries.length === effectiveLimit && entries.length > 0
-            ? String(entries[entries.length - 1].entry_date)
+          canPaginate && entries.length === effectiveLimit && displayEntries.length > 0
+            ? String(displayEntries[displayEntries.length - 1].entry_date)
             : undefined;
 
-        return ok(formatEntries(entries, accountMap, nextCursor));
+        return ok(formatEntries(displayEntries, accountMap, nextCursor));
       } catch (e) {
         return err(e);
       }
